@@ -1,5 +1,6 @@
 const db = require("../models");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const status = require("http-status");
 const user = db.users;
 const Op = db.Sequelize.Op;
@@ -122,11 +123,97 @@ const deleteAll = (req, res) => {
     });
 };
 
+const checkDuplicateUserOrEmail = (req, res, next) => {
+  let user_id = req.body.user_id;
+  let email = req.body.email;
+
+  user.findByPk(user_id)
+    .then(user => {
+      if (user) {
+        res.status(status.BAD_REQUEST).send({
+          message: `Failed! Username '${user_id}' is already in use!`
+        });
+        return;
+      }
+    });
+
+  user.findOne({
+      where: { email: email }
+    })
+      .then(user => {
+        if (user) {
+          res.status(status.BAD_REQUEST).send({
+            message: `Failed! Email '${email}' is already in use!`
+          });
+          return;
+        }
+    });
+  next();
+};
+
+const verifyUser = (req, res) => {
+  let user_id = req.body.user_id;
+  let password = req.body.password;
+
+  user.findByPk(user_id)
+    .then(data => {
+        if (!data) {
+          return res.status(status.NOT_FOUND).send({ 
+            message: `User Not found.` 
+          });
+        }
+        let passwordIsValid = bcrypt.compareSync(
+          password,
+          data.password
+        );
+        if (!passwordIsValid) {
+          return res.status(status.UNAUTHORIZED).send({
+            message: `Invalid Password!`
+          });
+        }
+
+        let token = jwt.sign({ id: user_id }, process.env.AUTH_KEY, {
+          expiresIn: +process.env.AUTH_EXP_5_MINUTES
+        });
+    
+        res.send({
+          user_id: data.user_id,
+          email: data.email,
+          role: data.role,
+          accessToken: token
+        });      
+    })
+    .catch(e => {
+      res.status(status.INTERNAL_SERVER_ERROR).send({
+        message: e.message
+      });
+    });
+};
+
+const isAdmin = (req, res, next) => {
+  user.findByPk(req.user_id)
+    .then(data => {
+      if (data.role == "ADMIN") {
+        next();
+        return;
+      } else {
+        res.status(status.FORBIDDEN).send({
+          message: `Require Admin Role!`
+        });
+        return;
+      }
+    })
+    .catch(e => console.log(`Error: `+e))
+}
+
 module.exports = {
   create,
   findAll,
   findOne,
   update,
   deleteOne,
-  deleteAll
+  deleteAll,
+  checkDuplicateUserOrEmail,
+  verifyUser,
+  isAdmin
 }

@@ -35,6 +35,7 @@ db.sequelize.sync();
 app.get("/", (req, res) => {
   res.json({ message: "Hello World" });
 });
+require("./app/routes/auth.routes")(app);
 require("./app/routes/user.routes")(app);
 
 // set port, listen for requests
